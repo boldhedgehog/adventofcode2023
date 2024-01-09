@@ -1,0 +1,10 @@
+/.idea
+
+/in
+/out
+
+# Other
+.DS_Store
+
+# k8s
+/k8s
