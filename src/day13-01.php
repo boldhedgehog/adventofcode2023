@@ -53,7 +53,7 @@ class Parser
         );
     }
 
-    private static function mapTransposed($pattern)
+    private static function mapTransposed($pattern): array
     {
         $matrix = array_map(
             function ($line) {
@@ -79,9 +79,7 @@ class Parser
 
 class Calculator
 {
-    protected const MAX_RECURSION = 2;
-
-    protected \Closure $matchingFunction;
+    protected bool $requiredSmudges = false;
 
     public function __construct(public bool $isDebug = false)
     {
@@ -89,7 +87,14 @@ class Calculator
 
     public function calculate($lines): int
     {
-        $this->matchingFunction = fn($x, $y) => $x === $y;
+        $reflections = array_map([$this, 'calculatePattern'], $lines);
+
+        return (int)array_sum($reflections);
+    }
+
+    public function calculateWithSmudges($lines): int
+    {
+        $this->requiredSmudges = true;
 
         $reflections = array_map([$this, 'calculatePattern'], $lines);
 
@@ -106,89 +111,88 @@ class Calculator
     {
         [$horizontal, $vertical] = $pattern;
 
-        $reflection = $this->calculateReflection($horizontal);
-        if (!$reflection) {
-            $reflection = $this->calculateReflection($vertical);
-
-            if ($this->isDebug) {
-                $this->debugOutputVertical($reflection, end($pattern));
-            }
-        } else {
-            if ($this->isDebug) {
-                $this->debugOutputHorizontal($reflection, end($pattern));
-            }
-
-            $reflection *= 100;
+        $horizontalReflection = $this->calculateReflection($horizontal);
+        if ($this->isDebug) {
+            $this->debugOutputHorizontal($horizontalReflection, end($pattern));
+            echo PHP_EOL;
         }
+
+        $verticalReflection = $this->calculateReflection($vertical);
 
         if ($this->isDebug) {
-            echo '---' . PHP_EOL;
+            $this->debugOutputVertical($verticalReflection, end($pattern));
+            echo PHP_EOL . '====' . PHP_EOL;
         }
 
+        $reflection = 100 * $horizontalReflection + $verticalReflection;
+
         if (!$reflection) {
-//            if (++$skip < self::MAX_RECURSION) {
-//                if ($this->isDebug) {
-//                    echo "Retrying with skipping $skip duplicates" . PHP_EOL;
-//                }
-//
-//                return $this->calculatePattern($pattern, $skip);
-//            }
-            throw new Exception(sprintf('No match [%s, %s]', implode(',', $horizontal), implode(',', $vertical)));
+            throw new Exception(sprintf('No match [%s | %s]', implode(',', $horizontal), implode(',', $vertical)));
         }
 
         return $reflection;
     }
 
-    protected function calculateReflection($numbers, int $start = 0): int
+    protected function calculateReflection($originalNumbers, int $start = 0): int
     {
+        $numbers = $originalNumbers;
         $aboveTheFold = $nextAboveTheFold = 0;
         $count = count($numbers);
+        $foundSmudged = 0;
+
         for ($forward = $start, $reverse = $start + 1, $gear = 1; $forward < $count && $reverse >= 0 && $reverse < $count; $forward++, $reverse += $gear) {
+            $eq = $this->eq($numbers[$forward], $numbers[$reverse]);
+            // if smudged ia already found, ignore it
+            $smudged = $this->requiredSmudges && $this->eqSmudged($numbers[$forward], $numbers[$reverse]);
+            $foundSmudged += (int)$smudged;
             if ($gear == 1) {
-                // found two matched numbers
-                if (($this->matchingFunction)($numbers[$forward], $numbers[$reverse])) {
+                // found two matched numbers or two matched with smudges
+                if ($eq || $foundSmudged == 1) {
                     // start looking for next pairs from the second duplicate's position
                     $aboveTheFold = $reverse;
-                    $nextAboveTheFold = $this->calculateReflection($numbers, $reverse);
+                    if ($this->requiredSmudges) {
+                        $numbers[$reverse] = $numbers[$forward];
+                    } else {
+                        $nextAboveTheFold = $this->calculateReflection($numbers, $reverse);
+                    }
                     $gear = -1;
+                    $forward++;
+                    $reverse--;
                 }
             } else {
-                if (!($this->matchingFunction)($numbers[$forward], $numbers[$reverse])) {
-                    return $nextAboveTheFold;
+                if (!$eq) {
+                    if ($this->requiredSmudges) {
+                        if (!$smudged || $foundSmudged != 1) {
+                            return $this->calculateReflection($originalNumbers, $aboveTheFold);
+                        }
+                    } else {
+                        return $nextAboveTheFold;
+                    }
                 }
             }
         }
 
-        return max($aboveTheFold, $nextAboveTheFold);
+        if ($this->requiredSmudges) {
+            if ($foundSmudged) {
+                return max($aboveTheFold, $nextAboveTheFold);
+            } else {
+                return ($aboveTheFold ? $this->calculateReflection($originalNumbers, $aboveTheFold) : $nextAboveTheFold);
+            }
+        } else {
+            return max($aboveTheFold, $nextAboveTheFold);
+        }
     }
 
-    /**
-     * @param bool|int $reflection
-     * @param string $original
-     *
-     * @return void
-     */
-    protected function debugOutputVertical(bool|int $reflection, string $original): void
+    protected function eq($x, $y): bool
     {
-        if ($reflection) {
-            $original = explode(PHP_EOL, $original);
-            $original = array_map(
-                function ($row) use ($reflection) {
-                    $linePos = 2 * $reflection - strlen($row); // a+b=c; pos=a-b; b=c-a; pos=2a-c;
+        return $x === $y;
+    }
 
-                    return ' ' . substr($row, 0, $linePos) . '|' . substr($row, $linePos);
-                },
-                $original
-            );
+    protected function eqSmudged($x, $y): bool
+    {
+        $xor = $x ^ $y;
 
-            $arrow = str_pad((string)$reflection, $reflection + (int)($reflection > strlen($original[0]) / 2)) . '><';
-            echo $arrow . PHP_EOL;
-            echo implode(PHP_EOL, $original) . PHP_EOL;
-            echo $arrow . PHP_EOL;
-        } else {
-            echo $original . PHP_EOL;
-            echo 'no V reflection' . PHP_EOL;
-        }
+        return $xor && !($xor & ($xor - 1));
     }
 
     /**
@@ -225,9 +229,38 @@ class Calculator
             echo 'no H reflection' . PHP_EOL;
         }
     }
+
+    /**
+     * @param bool|int $reflection
+     * @param string $original
+     *
+     * @return void
+     */
+    protected function debugOutputVertical(bool|int $reflection, string $original): void
+    {
+        if ($reflection) {
+            $original = explode(PHP_EOL, $original);
+            $original = array_map(
+                function ($row) use ($reflection) {
+                    $linePos = 2 * $reflection - strlen($row); // a+b=c; pos=a-b; b=c-a; pos=2a-c;
+
+                    return ' ' . substr($row, 0, $linePos) . '|' . substr($row, $linePos);
+                },
+                $original
+            );
+
+            $arrow = str_pad((string)$reflection, $reflection + (int)($reflection > strlen($original[0]) / 2)) . '><';
+            echo $arrow . PHP_EOL;
+            echo implode(PHP_EOL, $original) . PHP_EOL;
+            echo $arrow . PHP_EOL;
+        } else {
+            echo $original . PHP_EOL;
+            echo 'no V reflection' . PHP_EOL;
+        }
+    }
 }
 
-$isDebug = true;
+$isDebug = false;
 
 /** @var array<int, array<int, int[]>> $patterns */
 $patterns = Parser::parseInput(Reader::getInput('day_13.txt'), $isDebug);
@@ -235,12 +268,14 @@ $patterns = Parser::parseInput(Reader::getInput('day_13.txt'), $isDebug);
 //if ($isDebug) {
 //    var_export($patterns);
 //}
-
-// 36507
-// 33385
-// 14941
+// test: 405
 // 34993
 
 $calculator = new Calculator($isDebug);
 
 echo $calculator->calculate($patterns) . PHP_EOL;
+
+echo PHP_EOL . ' ==== Smudged' . PHP_EOL;
+// test: 400
+// 29341
+echo $calculator->calculateWithSmudges($patterns) . PHP_EOL;
