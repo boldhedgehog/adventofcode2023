@@ -190,8 +190,19 @@ class Calculator
 
     protected function eqSmudged($x, $y): bool
     {
+        // get the bit difference
         $xor = $x ^ $y;
 
+        // check that it is a one-bit-set-only number, i.e. it is a power of 2.
+        // it is not 0, so has at least one bit set AND it is only one
+        // n - 1 "moves" the bit to the right if it's the one that is set;
+        // otherwise, the bits to the right of the most left set bit are changed.
+        // the bitwise AND result of n and n - 1 should be 0 when n is a power of 2.
+        // Examples:
+        // 0100 (4) - 1 = 0011 (3), 0100 & 0011 = 0000
+        // 0101 (5) - 1 = 0100 (4), 0101 & 0100 = 0100
+        // 0110 (6) - 1 = 0101 (5), 0110 & 0101 = 0100
+        // 1000 (8) - 1 = 0111 (7), 1000 & 0111 = 0000
         return $xor && !($xor & ($xor - 1));
     }
 
