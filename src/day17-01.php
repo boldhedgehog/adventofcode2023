@@ -184,6 +184,12 @@ class Crucible
     {
         return $this->posIndex . '|' . self::$arrows[implode(',', $this->direction)];
     }
+
+    public function distanceTo(Crucible $crucible): int
+    {
+        return abs($crucible->position[0] - $this->position[0])
+            + abs($crucible->position[1] - $this->position[1]);
+    }
 }
 
 class Queue extends \SplPriorityQueue
@@ -210,6 +216,10 @@ class Calculator
 
     private readonly Crucible $goal;
 
+    private bool $isDistanceCalculated = false;
+
+    private int $size;
+
     public function __construct(array $matrix, private readonly bool $isDebug = false)
     {
         if ($this->isDebug) {
@@ -231,7 +241,7 @@ class Calculator
 
         $this->matrix = \SplFixedArray::fromArray($matrix);
 
-        $size = count($matrix);
+        $this->size= $size = count($matrix);
 
         $this->goal = new Crucible([$size - 1, $size - 1]);
         $this->goal->heatLoss = $this->matrix[$size - 1][$size - 1];
@@ -256,9 +266,11 @@ class Calculator
         $costSoFar[$startDown->index] = 0;
         $frontier->insert($startDown, 0);
 
-        $field = $this->field;
+        if ($this->isDebug) {
+            $field = implode(PHP_EOL, $this->field);
 
-        $this->showField($field);
+            $this->showField($field);
+        }
 
         $result = 0;
 
@@ -281,21 +293,31 @@ class Calculator
 
                 if (!isset($costSoFar[$next->index]) || $cost < $costSoFar[$next->index]) {
                     $costSoFar[$next->index] = $cost;
+                    $priority = $cost + ($this->isDistanceCalculated ? $this->getDistanceTo($next) : 0);
 
-                    $frontier->insert($next, $cost);
+                    $frontier->insert($next, $priority);
 
                     $path[$next->posIndex] = $next;
+
+                    if ($this->isDebug) {
+                        $index = $next->position[0] + ($this->size + 1) * $next->position[1];
+                        $field[$index] =
+                            $this->directionToArrow[implode(',', $next->direction)];
+                        $this->showField($field);
+                        //usleep(50_000);
+                    }
                 }
             }
 
-            $frontier->rewind();
+            //$frontier->rewind();
         }
 
         if ($this->isDebug) {
-            $field = $this->field;
+            $field = implode(PHP_EOL, $this->field);
             $optimalPath = $this->buildOptimalPath($path);
             foreach ($optimalPath as $crucible) {
-                $field[$crucible->position[1]][$crucible->position[0]] =
+                $index = $crucible->position[0] + ($this->size + 1) * $crucible->position[1];
+                $field[$index] =
                     $this->directionToArrow[implode(',', $crucible->direction)];
             }
 
@@ -305,11 +327,12 @@ class Calculator
         return $result;
     }
 
-    private function showField(array $field)
+    private function showField(string $field)
     {
-        //echo chr(27) . chr(91) . 'H' . chr(27) . chr(91) . 'J';   //^[H^[J
+        echo chr(27) . chr(91) . 'H' . chr(27) . chr(91) . 'J';   //^[H^[J
 
-        $text = implode(PHP_EOL, $field);
+        //$text = implode(PHP_EOL, $field);
+        $text = $field;
 
         $arrows = ['<', '>', 'V', '^'];
 
@@ -347,6 +370,16 @@ class Calculator
     }
 
     /**
+     * @param Crucible $next
+     *
+     * @return int
+     */
+    protected function getDistanceTo(Crucible $next): int
+    {
+        return $next->distanceTo($this->goal);
+    }
+
+    /**
      * @param Crucible[] $nodes
      *
      * @return Crucible[]
@@ -366,6 +399,11 @@ class Calculator
 
         return $path;
     }
+
+    public function setIsDistanceCalculated(bool $isDistanceCalculated): void
+    {
+        $this->isDistanceCalculated = $isDistanceCalculated;
+    }
 }
 
 $isDebug = false;
@@ -380,11 +418,15 @@ $matrix = Parser::parseInput($input, $isDebug);
 
 $calculator = new Calculator($matrix, $isDebug);
 
+$calculator->setIsDistanceCalculated(true);
+
 $crucible = new Crucible([0, 0]);
 
 echo $calculator->calculate($crucible) . PHP_EOL;
 
 $calculator = new Calculator($matrix, $isDebug);
+
+$calculator->setIsDistanceCalculated(true);
 
 $crucible = new Crucible([0, 0]);
 $crucible::$minSteps = 4;
