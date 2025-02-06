@@ -94,9 +94,10 @@ class Crucible
             ];
         }
 
-        $this->index = implode(',', $this->position) . '|' . implode(',', $this->direction)
-            . '|' . $this->steps;
-        $this->posIndex = implode(',', $this->position);
+        $vertical = $direction[1] & 1;
+
+        $this->posIndex = "{$position[0]},{$this->position[1]}";
+        $this->index = "{$this->posIndex}|{$vertical}|{$steps}";
     }
 
     public function copy(array $direction = null): Crucible
