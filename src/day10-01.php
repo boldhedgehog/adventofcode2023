@@ -176,7 +176,7 @@ class Reader
 {
     public static function getInput($fileName): string
     {
-        $filepath = __DIR__ . "/$fileName";
+        $filepath = __DIR__ . "/../in/$fileName";
         $input = trim(\file_get_contents($filepath));
 
         if (!$input) {
